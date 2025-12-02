@@ -1,9 +1,29 @@
 import { GoogleGenAI } from "@google/genai";
 import { SERVICES, PROJECTS, COMPANY_NAME, TAGLINE, CONTACT_EMAIL, CONTACT_ADDRESS, CONTACT_PHONE } from "../constants";
 
-// Initialize Gemini Client
-// Assumption: process.env.API_KEY is available as per requirements
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Prefer Vite-style env var, but fall back to Node process env (guarded for browser)
+const getApiKey = () => {
+  const viteKey = import.meta.env?.VITE_GEMINI_API_KEY;
+  const nodeKey = typeof process !== 'undefined' ? (process.env?.GEMINI_API_KEY || process.env?.API_KEY) : undefined;
+  return viteKey || nodeKey;
+};
+
+let aiClient: GoogleGenAI | null = null;
+
+const getClient = () => {
+  if (aiClient) return aiClient;
+
+  const apiKey = getApiKey();
+  if (!apiKey) return null;
+
+  try {
+    aiClient = new GoogleGenAI({ apiKey });
+    return aiClient;
+  } catch (error) {
+    console.error("Failed to initialize Gemini client:", error);
+    return null;
+  }
+};
 
 const SYSTEM_INSTRUCTION = `
 You are the virtual assistant for ${COMPANY_NAME}, a premier IT solutions company based in Sri Lanka.
@@ -28,6 +48,11 @@ Do not make up facts about projects not listed here.
 
 export const chatWithGemini = async (userMessage: string, history: {role: 'user' | 'model', text: string}[]) => {
   try {
+    const client = getClient();
+    if (!client) {
+      return "Our AI assistant is currently unavailable. Please reach us at " + CONTACT_EMAIL + " for support.";
+    }
+
     const model = 'gemini-2.5-flash';
     
     // Convert history to format expected by chat (if using chat session) 
@@ -38,7 +63,7 @@ export const chatWithGemini = async (userMessage: string, history: {role: 'user'
     const conversationContext = history.map(h => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.text}`).join('\n');
     const finalPrompt = `${conversationContext}\nUser: ${userMessage}\nAssistant:`;
 
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
       model: model,
       contents: finalPrompt,
       config: {
